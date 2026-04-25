@@ -28,6 +28,9 @@ a{color:var(--cyan);text-decoration:none}
 .page{display:none;animation:fadeUp .4s ease}
 .page.active{display:flex;flex-direction:column}
 #page-dashboard.active{display:flex;flex-direction:column;height:100%}
+.filter-row{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+.filter-chip{padding:6px 12px;border-radius:999px;background:var(--surface2);border:1px solid var(--border);color:var(--text2);cursor:pointer;transition:all .2s ease;font-size:11px}
+.filter-chip.active{color:var(--cyan);border-color:var(--cyan);background:rgba(0,210,255,.08)}
 
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;transition:all .2s ease}
 .card:hover{border-color:rgba(0,210,255,.3);box-shadow:0 0 20px rgba(0,210,255,.08)}
@@ -45,6 +48,9 @@ a{color:var(--cyan);text-decoration:none}
 .wallet-block{background:var(--surface2);border-radius:8px;padding:8px 10px;min-width:0}
 .wallet-label{font-size:10px;color:var(--text2);text-transform:uppercase;margin-bottom:4px}
 .wallet-value{font-size:10px;color:var(--cyan);word-break:break-all}
+.wallet-value-row{display:flex;gap:8px;align-items:flex-start}
+.wallet-toggle{border:none;background:transparent;color:var(--amber);cursor:pointer;font-size:12px;line-height:1;padding-top:1px}
+.wallet-toggle:hover{color:var(--cyan)}
 .agent-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
 .agent-stat{text-align:center;padding:8px;background:var(--surface2);border-radius:8px}
 .agent-stat .v{font-size:15px;font-weight:700;color:var(--cyan)}

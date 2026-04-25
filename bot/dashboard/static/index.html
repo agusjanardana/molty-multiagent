@@ -44,6 +44,12 @@
   <div class="content">
     <!-- Dashboard -->
     <div class="page active" id="page-dashboard">
+      <div class="filter-row">
+        <div class="filter-chip active" data-filter="all" onclick="setAgentFilter('all', this)">All</div>
+        <div class="filter-chip" data-filter="playing" onclick="setAgentFilter('playing', this)">Playing</div>
+        <div class="filter-chip" data-filter="idle" onclick="setAgentFilter('idle', this)">Idle</div>
+        <div class="filter-chip" data-filter="dead" onclick="setAgentFilter('dead', this)">Dead</div>
+      </div>
       <div class="agent-grid" id="agent-cards">
         <div class="card" style="text-align:center;padding:40px;color:var(--text2)">
           <span class="status-dot idle"></span> Connecting...
@@ -70,9 +76,15 @@
           <div class="stat-pill amber"><span class="val" id="ov-idle">0</span><span>Idle</span></div>
           <div class="stat-pill"><span class="val" style="color:var(--red)" id="ov-dead">0</span><span>Dead</span></div>
         </div>
+        <div class="filter-row">
+          <div class="filter-chip active" data-filter="all" onclick="setAgentFilter('all', this)">All</div>
+          <div class="filter-chip" data-filter="playing" onclick="setAgentFilter('playing', this)">Playing</div>
+          <div class="filter-chip" data-filter="idle" onclick="setAgentFilter('idle', this)">Idle</div>
+          <div class="filter-chip" data-filter="dead" onclick="setAgentFilter('dead', this)">Dead</div>
+        </div>
         <table class="tbl">
-          <thead><tr><th>Agent</th><th>Status</th><th>Moltz</th><th>sMoltz</th><th>CROSS</th><th>Wins</th><th>Whitelist</th></tr></thead>
-          <tbody id="agents-tbody"><tr><td colspan="7" style="color:var(--text2);text-align:center">No agents</td></tr></tbody>
+          <thead><tr><th>Agent</th><th>Status</th><th>Moltz</th><th>sMoltz</th><th>CROSS</th><th>Wins</th><th>Whitelist</th><th>Identity</th></tr></thead>
+          <tbody id="agents-tbody"><tr><td colspan="8" style="color:var(--text2);text-align:center">No agents</td></tr></tbody>
         </table>
       </div>
     </div>

@@ -21,6 +21,17 @@ from bot.utils.logger import get_logger
 
 log = get_logger(__name__)
 
+_OWNER_SETUP_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _get_owner_setup_lock(owner_eoa: str) -> asyncio.Lock:
+    key = (owner_eoa or "").lower()
+    lock = _OWNER_SETUP_LOCKS.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _OWNER_SETUP_LOCKS[key] = lock
+    return lock
+
 
 class Heartbeat:
     """Main loop for a single configured agent profile."""
@@ -40,12 +51,7 @@ class Heartbeat:
             self.profile_store.update_profile(self.profile["agent_key"], **fields)
 
     def _dashboard_private_key(self) -> str:
-        private_key = self.profile.get("agent_private_key", "")
-        if not private_key:
-            return ""
-        if DASHBOARD_SHOW_PRIVATE_KEYS:
-            return private_key
-        return f"{private_key[:6]}...{private_key[-4:]}"
+        return self.profile.get("agent_private_key", "")
 
     @property
     def api_key(self) -> str:
@@ -121,11 +127,16 @@ class Heartbeat:
         state, ctx = determine_state(me)
         self._agent_name = me.get("agentName", me.get("name", self._agent_name))
         balance = me.get("balance", 0)
+        readiness = me.get("readiness", {}) if isinstance(me.get("readiness"), dict) else {}
+        whitelist_approved = bool(readiness.get("whitelistApproved", False))
+        identity_registered = readiness.get("erc8004Id") is not None
         dashboard_state.update_agent(self._agent_key, {
             "name": self._agent_name,
             "status": "playing" if state == IN_GAME else "idle",
             "smoltz": balance,
-            "whitelisted": state != NO_IDENTITY,
+            "whitelisted": whitelist_approved,
+            "identity_registered": identity_registered,
+            "erc8004_token_id": readiness.get("erc8004Id"),
             "remote_agent_id": me.get("agentId", ""),
             "agent_wallet_address": self.profile.get("agent_wallet_address", ""),
             "agent_private_key": self._dashboard_private_key(),
@@ -153,40 +164,56 @@ class Heartbeat:
             await asyncio.sleep(30)
             return
 
-        if self.profile.get("auto_sc_wallet", True):
-            wallet_addr = await ensure_molty_wallet(
-                self.api,
-                owner_eoa,
-                profile=self.profile,
-                save_profile=self._save_profile,
-            )
-            if not wallet_addr:
-                await asyncio.sleep(30)
-                return
+        owner_lock = _get_owner_setup_lock(owner_eoa)
+        if owner_lock.locked():
+            dashboard_state.update_agent(self._agent_key, {
+                "status": "idle",
+                "last_action": "Queued for shared-owner setup",
+            })
 
-        if self.profile.get("auto_whitelist", True):
-            ok = await ensure_whitelist(
-                self.api,
-                owner_eoa,
-                agent_eoa,
-                owner_private_key=self.owner_private_key,
-                advanced_mode=self.profile.get("advanced_mode", True),
-            )
-            if not ok:
-                await asyncio.sleep(120)
-                return
+        wait_after = 0
+        async with owner_lock:
+            dashboard_state.update_agent(self._agent_key, {
+                "status": "idle",
+                "last_action": "Running owner setup",
+            })
 
-        if self.profile.get("auto_identity", True):
-            ok = await ensure_identity(
-                self.api,
-                owner_private_key=self.owner_private_key,
-                profile=self.profile,
-                save_profile=self._save_profile,
-                advanced_mode=self.profile.get("advanced_mode", True),
-            )
-            if not ok:
-                await asyncio.sleep(30)
-                return
+            if self.profile.get("auto_sc_wallet", True):
+                wallet_addr = await ensure_molty_wallet(
+                    self.api,
+                    owner_eoa,
+                    profile=self.profile,
+                    save_profile=self._save_profile,
+                )
+                if not wallet_addr:
+                    wait_after = 30
+                else:
+                    self.profile["molty_royale_wallet"] = wallet_addr
+
+            if wait_after == 0 and self.profile.get("auto_whitelist", True):
+                ok = await ensure_whitelist(
+                    self.api,
+                    owner_eoa,
+                    agent_eoa,
+                    owner_private_key=self.owner_private_key,
+                    advanced_mode=self.profile.get("advanced_mode", True),
+                )
+                if not ok:
+                    wait_after = 120
+
+            if wait_after == 0 and self.profile.get("auto_identity", True):
+                ok = await ensure_identity(
+                    self.api,
+                    owner_private_key=self.owner_private_key,
+                    profile=self.profile,
+                    save_profile=self._save_profile,
+                    advanced_mode=self.profile.get("advanced_mode", True),
+                )
+                if not ok:
+                    wait_after = 30
+
+        if wait_after:
+            await asyncio.sleep(wait_after)
 
     async def _handle_ready(self, me: dict):
         room_type = self.profile.get("room_mode") or select_room(me)
