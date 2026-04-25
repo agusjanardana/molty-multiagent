@@ -37,6 +37,43 @@ let prevAgentHash = '';
 const counters = {};
 const revealedPrivateKeys = new Set();
 
+function ownerSetupFor(ownerEoa) {
+  if (!ownerEoa || !S.owner_setup) return {};
+  return S.owner_setup[ownerEoa.toLowerCase()] || {};
+}
+
+function resolveSharedWallet(agent) {
+  const owner = agent.owner_eoa || '';
+  if (!owner) return '';
+  const agentEntries = Object.values(S.agents || {});
+  for (const item of agentEntries) {
+    if ((item.owner_eoa || '').toLowerCase() === owner.toLowerCase() && item.molty_royale_wallet) {
+      return item.molty_royale_wallet;
+    }
+  }
+  const accounts = S.accounts || [];
+  for (const item of accounts) {
+    if ((item.owner_eoa || '').toLowerCase() === owner.toLowerCase() && item.molty_royale_wallet) {
+      return item.molty_royale_wallet;
+    }
+  }
+  return '';
+}
+
+function ownerGroupStats(ownerEoa) {
+  if (!ownerEoa) return { total: 0, whitelisted: 0 };
+  const entries = Object.values(S.agents || {}).filter(a => (a.owner_eoa || '').toLowerCase() === ownerEoa.toLowerCase());
+  return {
+    total: entries.length,
+    whitelisted: entries.filter(a => a.whitelisted).length,
+  };
+}
+
+function copyText(value) {
+  if (!value || value === '-') return;
+  navigator.clipboard?.writeText(String(value)).catch(() => {});
+}
+
 function filterAgentEntries(entries) {
   if (currentAgentFilter === 'all') return entries;
   return entries.filter(([, a]) => (a.status || 'idle') === currentAgentFilter);
@@ -186,6 +223,11 @@ function patchAgentCard(card, id, a) {
   const agentPk = rawAgentPk ? (revealedPrivateKeys.has(id) ? rawAgentPk : `${rawAgentPk.slice(0, 6)}...${rawAgentPk.slice(-4)}`) : '-';
   const ownerWallet = a.owner_eoa || '-';
   const scWallet = a.molty_royale_wallet || '-';
+  const sharedWalletTarget = resolveSharedWallet(a) || scWallet;
+  const ownerSetup = ownerSetupFor(a.owner_eoa || '');
+  const ownerStats = ownerGroupStats(a.owner_eoa || '');
+  const ownerStep = a.shared_owner_step || ownerSetup.step || '-';
+  const waitingFor = a.shared_owner_waiting_for || ownerSetup.holder_name || '-';
   const whitelistBadge = a.whitelisted ? '<span class="badge ok">Whitelist</span>' : '<span class="badge warn">Whitelist Pending</span>';
   const identityBadge = a.identity_registered ? '<span class="badge ok">Identity</span>' : '<span class="badge warn">Identity Pending</span>';
   const eye = rawAgentPk ? (revealedPrivateKeys.has(id) ? '🙈' : '👁') : '';
@@ -212,8 +254,17 @@ function patchAgentCard(card, id, a) {
       <div class="wallet-block"><div class="wallet-label">Agent PK</div><div class="wallet-value-row"><div class="wallet-value">${esc(agentPk)}</div>${rawAgentPk ? `<button class="wallet-toggle" onclick="togglePrivateKey('${esc(id)}')">${eye}</button>` : ''}</div></div>
       <div class="wallet-block"><div class="wallet-label">Owner EOA</div><div class="wallet-value">${esc(ownerWallet)}</div></div>
       <div class="wallet-block"><div class="wallet-label">XCROSS Wallet</div><div class="wallet-value">${esc(scWallet)}</div></div>
+      <div class="wallet-block"><div class="wallet-label">Shared Wallet Target</div><div class="wallet-value">${esc(sharedWalletTarget || '-')}</div></div>
+      <div class="wallet-block"><div class="wallet-label">Owner Group</div><div class="wallet-value">${ownerStats.total} agent(s) • ${ownerStats.whitelisted} whitelisted</div></div>
     </div>
     <div class="filter-row" style="margin-bottom:10px">${whitelistBadge}${identityBadge}</div>
+    <div class="status-detail">Owner step: ${esc(ownerStep)} | Waiting for: ${esc(waitingFor)}</div>
+    <div class="action-row">
+      <button class="mini-btn" onclick="copyText('${esc(agentWallet)}')">Copy Agent Wallet</button>
+      <button class="mini-btn" onclick="copyText('${esc(ownerWallet)}')">Copy Owner EOA</button>
+      <button class="mini-btn" onclick="copyText('${esc(sharedWalletTarget || '-')}')">Copy Shared Wallet</button>
+      <a class="mini-btn link" href="https://www.moltyroyale.com/agent-wallet" target="_blank" rel="noreferrer">Open My Agent</a>
+    </div>
     <div class="bar-row">
       <div class="bar-wrap">
         <div class="bar-label"><span class="bl">HP</span><span class="bv" style="color:${hpPct > 50 ? 'var(--green)' : hpPct > 25 ? 'var(--amber)' : 'var(--red)'}">${hp} / ${maxHp}</span></div>

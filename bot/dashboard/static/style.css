@@ -51,6 +51,11 @@ a{color:var(--cyan);text-decoration:none}
 .wallet-value-row{display:flex;gap:8px;align-items:flex-start}
 .wallet-toggle{border:none;background:transparent;color:var(--amber);cursor:pointer;font-size:12px;line-height:1;padding-top:1px}
 .wallet-toggle:hover{color:var(--cyan)}
+.action-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.mini-btn{padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;cursor:pointer;font-family:'JetBrains Mono',monospace}
+.mini-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.mini-btn.link{display:inline-flex;align-items:center}
+.status-detail{font-size:10px;color:var(--text2);margin-bottom:10px;line-height:1.5}
 .agent-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
 .agent-stat{text-align:center;padding:8px;background:var(--surface2);border-radius:8px}
 .agent-stat .v{font-size:15px;font-weight:700;color:var(--cyan)}
