@@ -3,6 +3,7 @@ Agent profile loading, bootstrap, and persistence for multi-agent runtime.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import gzip
@@ -13,6 +14,7 @@ from bot.api_client import APIError, MoltyAPI
 from bot.config import (
     ACCOUNTS_B64_GZIP,
     ACCOUNTS_JSON,
+    ACCOUNT_BOOTSTRAP_DELAY_SECONDS,
     ADVANCED_MODE,
     AGENT_BOOTSTRAP_COUNT,
     AGENT_NAME_PREFIX,
@@ -24,6 +26,7 @@ from bot.config import (
     ROOM_MODE,
     SHARED_OWNER_WALLET,
 )
+from bot.dashboard.state import dashboard_state
 from bot.credentials import load_agent_wallet, load_credentials, load_owner_wallet
 from bot.utils.logger import get_logger
 from bot.utils.railway_sync import is_railway, sync_profiles_to_railway
@@ -161,10 +164,17 @@ async def bootstrap_profiles_if_needed() -> AgentProfileStore:
     file_profiles = _read_accounts_file()
     if file_profiles:
         log.info("Loaded %d agent profile(s) from %s", len(file_profiles), ACCOUNTS_FILE)
+        if AGENT_BOOTSTRAP_COUNT > len(file_profiles):
+            profiles = await _bootstrap_profiles(AGENT_BOOTSTRAP_COUNT, existing_profiles=file_profiles)
+            store = AgentProfileStore(profiles, ACCOUNTS_FILE)
+            store.save()
+            if is_railway():
+                await sync_profiles_to_railway(profiles)
+            return store
         return AgentProfileStore(file_profiles, ACCOUNTS_FILE)
 
     if AGENT_BOOTSTRAP_COUNT > 0:
-        profiles = await _bootstrap_profiles(AGENT_BOOTSTRAP_COUNT)
+        profiles = await _bootstrap_profiles(AGENT_BOOTSTRAP_COUNT, existing_profiles=[])
         store = AgentProfileStore(profiles, ACCOUNTS_FILE)
         store.save()
         if is_railway():
@@ -180,15 +190,25 @@ async def bootstrap_profiles_if_needed() -> AgentProfileStore:
     return AgentProfileStore([], ACCOUNTS_FILE)
 
 
-async def _bootstrap_profiles(count: int) -> list[dict]:
+async def _bootstrap_profiles(count: int, existing_profiles: list[dict] | None = None) -> list[dict]:
     log.info("Bootstrapping %d agent account(s)...", count)
-    profiles: list[dict] = []
+    profiles: list[dict] = list(existing_profiles or [])
+    dashboard_state.set_setup_status(
+        active=True,
+        message="Your account is being setup.",
+        current=len(profiles),
+        total=count,
+    )
+    dashboard_state.add_log(f"Bootstrap setup started: {len(profiles)}/{count}", "info")
     shared_owner_eoa = ""
     shared_owner_pk = ""
-    if ADVANCED_MODE and SHARED_OWNER_WALLET:
+    if ADVANCED_MODE and SHARED_OWNER_WALLET and profiles:
+        shared_owner_eoa = profiles[0].get("owner_eoa", "")
+        shared_owner_pk = profiles[0].get("owner_private_key", "")
+    elif ADVANCED_MODE and SHARED_OWNER_WALLET:
         shared_owner_eoa, shared_owner_pk = generate_owner_wallet()
 
-    for idx in range(count):
+    for idx in range(len(profiles), count):
         agent_name = f"{AGENT_NAME_PREFIX}-{idx + 1}"
         agent_address, agent_pk = generate_agent_wallet()
 
@@ -200,13 +220,37 @@ async def _bootstrap_profiles(count: int) -> list[dict]:
             else:
                 owner_eoa, owner_pk = generate_owner_wallet()
 
-        api = MoltyAPI()
-        try:
-            result = await api.create_account(agent_name, agent_address)
-        except APIError as exc:
-            await api.close()
-            raise RuntimeError(f"Bootstrap failed for {agent_name}: {exc}") from exc
-        await api.close()
+        result = None
+        while result is None:
+            api = MoltyAPI()
+            try:
+                result = await api.create_account(agent_name, agent_address)
+            except APIError as exc:
+                await api.close()
+                if exc.code == "RATE_LIMITED" or exc.status == 429:
+                    wait = max(ACCOUNT_BOOTSTRAP_DELAY_SECONDS, 15)
+                    msg = f"Rate limited while creating {agent_name}. Retrying in {wait}s..."
+                    log.warning(msg)
+                    dashboard_state.set_setup_status(
+                        active=True,
+                        message=msg,
+                        current=len(profiles),
+                        total=count,
+                    )
+                    dashboard_state.add_log(msg, "warning")
+                    await asyncio.sleep(wait)
+                    continue
+                msg = f"Bootstrap failed for {agent_name}: {exc}"
+                dashboard_state.set_setup_status(
+                    active=True,
+                    message="Your account is being setup.",
+                    current=len(profiles),
+                    total=count,
+                    error=msg,
+                )
+                raise RuntimeError(msg) from exc
+            else:
+                await api.close()
 
         api_key = result.get("apiKey", "")
         if not api_key:
@@ -229,7 +273,24 @@ async def _bootstrap_profiles(count: int) -> list[dict]:
             "enable_memory": ENABLE_MEMORY,
         }, idx))
         log.info("Created account %s (%d/%d)", agent_name, idx + 1, count)
+        dashboard_state.set_setup_status(
+            active=True,
+            message="Your account is being setup.",
+            current=len(profiles),
+            total=count,
+        )
+        dashboard_state.add_log(f"Created account {agent_name} ({len(profiles)}/{count})", "info")
+        ACCOUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        ACCOUNTS_FILE.write_text(json.dumps({"accounts": profiles}, indent=2), encoding="utf-8")
+        if idx + 1 < count and ACCOUNT_BOOTSTRAP_DELAY_SECONDS > 0:
+            await asyncio.sleep(ACCOUNT_BOOTSTRAP_DELAY_SECONDS)
 
+    dashboard_state.set_setup_status(
+        active=False,
+        message="Account setup complete.",
+        current=len(profiles),
+        total=count,
+    )
     return profiles
 
 

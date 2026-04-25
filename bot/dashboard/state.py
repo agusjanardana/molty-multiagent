@@ -44,6 +44,13 @@ class DashboardState:
 
         # ── Accounts ───────────────────────────────────────────
         self.accounts: list[dict] = []
+        self.setup: dict = {
+            "active": False,
+            "message": "",
+            "current": 0,
+            "total": 0,
+            "error": "",
+        }
 
         # ── Timestamps ─────────────────────────────────────────
         self.started_at = time.time()
@@ -81,6 +88,17 @@ class DashboardState:
                 return
         self.accounts.append(account_data)
 
+    def set_setup_status(self, *, active: bool, message: str = "", current: int = 0,
+                         total: int = 0, error: str = ""):
+        self.setup.update({
+            "active": active,
+            "message": message,
+            "current": current,
+            "total": total,
+            "error": error,
+        })
+        self.last_update = time.time()
+
     # ── Dashboard reads ────────────────────────────────────────
 
     def get_snapshot(self) -> dict:
@@ -108,6 +126,7 @@ class DashboardState:
                 "uptime": time.time() - self.started_at,
             },
             "accounts": self.accounts,
+            "setup": dict(self.setup),
             "logs": list(self.global_logs)[-200:],
             "agent_logs": {k: list(v)[-100:] for k, v in self.agent_logs.items()},
         }

@@ -140,6 +140,17 @@ function renderAgentCards() {
   prevAgentHash = hash;
 
   if (!agents.length) {
+    const setup = S.setup || {};
+    if (setup.active) {
+      const progress = setup.total ? `${setup.current || 0}/${setup.total}` : '';
+      const error = setup.error ? `<div style="margin-top:8px;color:var(--amber)">${esc(setup.error)}</div>` : '';
+      container.innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--text2)">
+        <span class="status-dot idle"></span> ${esc(setup.message || 'Your account is being setup.')}
+        <div style="margin-top:8px;color:var(--cyan)">${esc(progress)}</div>
+        ${error}
+      </div>`;
+      return;
+    }
     container.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:var(--text2)"><span class="status-dot idle"></span> Waiting for agent connection...</div>';
     return;
   }

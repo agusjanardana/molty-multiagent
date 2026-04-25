@@ -22,14 +22,25 @@ def main():
     log.info("Press Ctrl+C to stop")
 
     async def run_all():
-        profile_store = await bootstrap_profiles_if_needed()
-        heartbeats = [Heartbeat(profile, profile_store) for profile in profile_store.profiles]
         await start_dashboard(port=DASHBOARD_PORT)
-        dashboard_state.bots_running = len(heartbeats)
-        if not heartbeats:
-            log.warning("No agent profiles configured. Dashboard will remain online.")
-            await asyncio.Event().wait()
-        await asyncio.gather(*(heartbeat.run() for heartbeat in heartbeats))
+        while True:
+            try:
+                profile_store = await bootstrap_profiles_if_needed()
+                heartbeats = [Heartbeat(profile, profile_store) for profile in profile_store.profiles]
+                dashboard_state.bots_running = len(heartbeats)
+                if not heartbeats:
+                    log.warning("No agent profiles configured. Dashboard will remain online.")
+                    await asyncio.Event().wait()
+                await asyncio.gather(*(heartbeat.run() for heartbeat in heartbeats))
+                return
+            except Exception as exc:
+                dashboard_state.set_setup_status(
+                    active=True,
+                    message="Your account is being setup.",
+                    error=str(exc),
+                )
+                log.error("Bootstrap failed: %s. Retrying in 30s...", exc)
+                await asyncio.sleep(30)
 
     try:
         if sys.platform == "win32":

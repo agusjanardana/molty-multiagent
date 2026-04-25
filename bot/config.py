@@ -55,6 +55,7 @@ MEMORY_FILE = MEMORY_DIR / "molty-royale-context.json"
 AGENT_NAME = os.getenv("AGENT_NAME", "")
 AGENT_NAME_PREFIX = os.getenv("AGENT_NAME_PREFIX", AGENT_NAME or "MoltyAgent")
 AGENT_BOOTSTRAP_COUNT = int(os.getenv("AGENT_BOOTSTRAP_COUNT", "0") or "0")
+ACCOUNT_BOOTSTRAP_DELAY_SECONDS = int(os.getenv("ACCOUNT_BOOTSTRAP_DELAY_SECONDS", "5") or "5")
 SHARED_OWNER_WALLET = os.getenv("SHARED_OWNER_WALLET", "true").lower() == "true"
 ADVANCED_MODE = os.getenv("ADVANCED_MODE", "true").lower() == "true"
 ROOM_MODE = os.getenv("ROOM_MODE", "free")  # free | auto | paid
