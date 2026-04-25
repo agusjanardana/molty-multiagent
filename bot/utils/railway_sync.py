@@ -6,7 +6,6 @@ import json
 import os
 
 import httpx
-
 from bot.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -125,8 +124,12 @@ async def sync_profiles_to_railway(profiles: list[dict]):
     if not is_railway():
         return
 
+    from bot.agent_profiles import serialize_profiles_compact
+
+    _, compressed = serialize_profiles_compact(profiles)
     all_vars = {
-        "ACCOUNTS_JSON": json.dumps({"accounts": profiles}, separators=(",", ":")),
+        "ACCOUNTS_B64_GZIP": compressed,
+        "ACCOUNTS_JSON": "",
         "AGENT_BOOTSTRAP_COUNT": str(len(profiles)),
         "SETUP_COMPLETE": "true",
     }

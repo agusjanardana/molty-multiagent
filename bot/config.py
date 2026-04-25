@@ -65,6 +65,7 @@ AGENT_WALLET_ADDRESS = os.getenv("AGENT_WALLET_ADDRESS", "")
 OWNER_EOA = os.getenv("OWNER_EOA", "")
 OWNER_PRIVATE_KEY = os.getenv("OWNER_PRIVATE_KEY", "")
 ACCOUNTS_JSON = os.getenv("ACCOUNTS_JSON", "")
+ACCOUNTS_B64_GZIP = os.getenv("ACCOUNTS_B64_GZIP", "")
 DASHBOARD_SHOW_PRIVATE_KEYS = os.getenv("DASHBOARD_SHOW_PRIVATE_KEYS", "false").lower() == "true"
 
 # ── First-Run Intake answers (setup.md lines 29-39) ──────────────────

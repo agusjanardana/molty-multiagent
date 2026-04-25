@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import json
 import re
+import gzip
+import base64
 from pathlib import Path
 
 from bot.api_client import APIError, MoltyAPI
 from bot.config import (
+    ACCOUNTS_B64_GZIP,
     ACCOUNTS_JSON,
     ADVANCED_MODE,
     AGENT_BOOTSTRAP_COUNT,
@@ -71,6 +74,18 @@ def _parse_accounts_json(raw: str) -> list[dict]:
     return [_normalize_profile(item, idx) for idx, item in enumerate(data) if isinstance(item, dict)]
 
 
+def _parse_accounts_b64_gzip(raw: str) -> list[dict]:
+    if not raw:
+        return []
+    try:
+        compressed = base64.b64decode(raw)
+        payload = gzip.decompress(compressed).decode("utf-8")
+    except Exception as exc:
+        log.warning("Failed to decode ACCOUNTS_B64_GZIP: %s", exc)
+        return []
+    return _parse_accounts_json(payload)
+
+
 def _read_accounts_file() -> list[dict]:
     if not ACCOUNTS_FILE.exists():
         return []
@@ -129,6 +144,13 @@ class AgentProfileStore:
 
 
 async def bootstrap_profiles_if_needed() -> AgentProfileStore:
+    compressed_profiles = _parse_accounts_b64_gzip(ACCOUNTS_B64_GZIP)
+    if compressed_profiles:
+        log.info("Loaded %d agent profile(s) from ACCOUNTS_B64_GZIP", len(compressed_profiles))
+        store = AgentProfileStore(compressed_profiles, ACCOUNTS_FILE)
+        store.save()
+        return store
+
     env_profiles = _parse_accounts_json(ACCOUNTS_JSON)
     if env_profiles:
         log.info("Loaded %d agent profile(s) from ACCOUNTS_JSON", len(env_profiles))
@@ -209,3 +231,21 @@ async def _bootstrap_profiles(count: int) -> list[dict]:
         log.info("Created account %s (%d/%d)", agent_name, idx + 1, count)
 
     return profiles
+
+
+def serialize_profiles_compact(profiles: list[dict]) -> tuple[str, str]:
+    """Return both minified JSON and gzip+base64 payloads for Railway persistence."""
+    compact_profiles = []
+    for profile in profiles:
+        compact_profiles.append({
+            "agent_name": profile.get("agent_name", ""),
+            "api_key": profile.get("api_key", ""),
+            "agent_wallet_address": profile.get("agent_wallet_address", ""),
+            "agent_private_key": profile.get("agent_private_key", ""),
+            "owner_eoa": profile.get("owner_eoa", ""),
+            "owner_private_key": profile.get("owner_private_key", ""),
+            "room_mode": profile.get("room_mode", ROOM_MODE),
+        })
+    payload = json.dumps({"accounts": compact_profiles}, separators=(",", ":"))
+    encoded = base64.b64encode(gzip.compress(payload.encode("utf-8"))).decode("ascii")
+    return payload, encoded
