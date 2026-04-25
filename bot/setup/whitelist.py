@@ -6,14 +6,19 @@ Never crashes — returns False if setup is incomplete (caller retries).
 import asyncio
 from bot.api_client import MoltyAPI, APIError
 from bot.web3.whitelist_contract import approve_whitelist_onchain, verify_whitelist
-from bot.credentials import get_owner_private_key
 from bot.config import ADVANCED_MODE
 from bot.utils.logger import get_logger
 
 log = get_logger(__name__)
 
 
-async def ensure_whitelist(api: MoltyAPI, owner_eoa: str, agent_eoa: str) -> bool:
+async def ensure_whitelist(
+    api: MoltyAPI,
+    owner_eoa: str,
+    agent_eoa: str,
+    owner_private_key: str = "",
+    advanced_mode: bool = ADVANCED_MODE,
+) -> bool:
     """
     Request whitelist + auto-approve if advanced mode.
     Returns True if whitelisted. Never crashes.
@@ -41,15 +46,14 @@ async def ensure_whitelist(api: MoltyAPI, owner_eoa: str, agent_eoa: str) -> boo
         return True
 
     # Step 2: Auto-approve if advanced mode
-    if ADVANCED_MODE:
-        owner_pk = get_owner_private_key()
-        if not owner_pk:
+    if advanced_mode:
+        if not owner_private_key:
             log.error("Advanced mode but no Owner private key found")
             return False
 
         log.info("Auto-approving whitelist on-chain...")
         # gas_checker + already-whitelisted check runs inside
-        tx_hash = await approve_whitelist_onchain(owner_pk, agent_eoa, owner_eoa)
+        tx_hash = await approve_whitelist_onchain(owner_private_key, agent_eoa, owner_eoa)
 
         if tx_hash is None:
             # Gas insufficient or tx failed — caller will retry

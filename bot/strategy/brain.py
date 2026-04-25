@@ -23,6 +23,8 @@ Uses ALL view fields from api-summary.md:
 - recentMessages: regional/private/broadcast messages
 - aliveCount: remaining alive agents
 """
+from contextvars import ContextVar
+
 from bot.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -96,9 +98,28 @@ def get_weapon_range(equipped_weapon) -> int:
     type_id = equipped_weapon.get("typeId", "").lower()
     return WEAPONS.get(type_id, {}).get("range", 0)
 
-_known_agents: dict = {}
-# Map knowledge: track all revealed DZ/pending DZ/safe regions after using Map
-_map_knowledge: dict = {"revealed": False, "death_zones": set(), "safe_center": []}
+_known_agents_var: ContextVar = ContextVar("brain_known_agents", default=None)
+_map_knowledge_var: ContextVar = ContextVar("brain_map_knowledge", default=None)
+
+
+def _new_map_knowledge() -> dict:
+    return {"revealed": False, "death_zones": set(), "safe_center": []}
+
+
+def get_known_agents() -> dict:
+    known = _known_agents_var.get()
+    if known is None:
+        known = {}
+        _known_agents_var.set(known)
+    return known
+
+
+def get_map_knowledge() -> dict:
+    knowledge = _map_knowledge_var.get()
+    if knowledge is None:
+        knowledge = _new_map_knowledge()
+        _map_knowledge_var.set(knowledge)
+    return knowledge
 
 
 def _resolve_region(entry, view: dict):
@@ -128,9 +149,8 @@ def _get_region_id(entry) -> str:
 
 def reset_game_state():
     """Reset per-game tracking state. Call when game ends."""
-    global _known_agents, _map_knowledge
-    _known_agents = {}
-    _map_knowledge = {"revealed": False, "death_zones": set(), "safe_center": []}
+    _known_agents_var.set({})
+    _map_knowledge_var.set(_new_map_knowledge())
     log.info("Strategy brain reset for new game")
 
 
@@ -410,7 +430,6 @@ def _estimate_enemy_weapon_bonus(agent: dict) -> int:
 
 
 # Track observed agents for memory (threat assessment)
-_known_agents: dict = {}
 
 
 # ── CURSE HANDLING — DISABLED in v1.5.2 ───────────────────────────────
@@ -658,14 +677,14 @@ def _select_facility(interactables: list, hp: int, ep: int) -> dict | None:
 
 def _track_agents(visible_agents: list, my_id: str, my_region: str):
     """Track observed agents for threat assessment (agent-memory.md temp.knownAgents)."""
-    global _known_agents
+    known_agents = get_known_agents()
     for agent in visible_agents:
         if not isinstance(agent, dict):
             continue
         aid = agent.get("id", "")
         if not aid or aid == my_id:
             continue
-        _known_agents[aid] = {
+        known_agents[aid] = {
             "hp": agent.get("hp", 100),
             "atk": agent.get("atk", 10),
             "isGuardian": agent.get("isGuardian", False),
@@ -674,11 +693,11 @@ def _track_agents(visible_agents: list, my_id: str, my_region: str):
             "isAlive": agent.get("isAlive", True),
         }
     # Limit size
-    if len(_known_agents) > 50:
+    if len(known_agents) > 50:
         # Remove dead agents first
-        dead = [k for k, v in _known_agents.items() if not v.get("isAlive", True)]
+        dead = [k for k, v in known_agents.items() if not v.get("isAlive", True)]
         for d in dead:
-            del _known_agents[d]
+            del known_agents[d]
 
 
 def _use_utility_item(inventory: list, hp: int, ep: int, alive_count: int) -> dict | None:
@@ -703,12 +722,12 @@ def learn_from_map(view: dict):
     Track all death zones, pending DZ, and find safe center regions.
     Per game-guide.md: Map reveals entire map (1-time consumable).
     """
-    global _map_knowledge
+    map_knowledge = get_map_knowledge()
     visible_regions = view.get("visibleRegions", [])
     if not visible_regions:
         return
 
-    _map_knowledge["revealed"] = True
+    map_knowledge["revealed"] = True
     safe_regions = []
 
     for region in visible_regions:
@@ -719,7 +738,7 @@ def learn_from_map(view: dict):
             continue
 
         if region.get("isDeathZone"):
-            _map_knowledge["death_zones"].add(rid)
+            map_knowledge["death_zones"].add(rid)
         else:
             # Count connections — center regions have more connections
             conns = region.get("connections", [])
@@ -730,12 +749,12 @@ def learn_from_map(view: dict):
 
     # Sort by connectivity+terrain — highest = most likely center
     safe_regions.sort(key=lambda x: x[1], reverse=True)
-    _map_knowledge["safe_center"] = [r[0] for r in safe_regions[:5]]
+    map_knowledge["safe_center"] = [r[0] for r in safe_regions[:5]]
 
     log.info("🗺️ MAP LEARNED: %d DZ regions, %d safe regions, top center: %s",
-             len(_map_knowledge["death_zones"]),
+             len(map_knowledge["death_zones"]),
              len(safe_regions),
-             _map_knowledge["safe_center"][:3])
+             map_knowledge["safe_center"][:3])
 
 
 def _choose_move_target(connections, danger_ids: set,
@@ -744,6 +763,7 @@ def _choose_move_target(connections, danger_ids: set,
     """Choose best region to move to.
     CRITICAL: NEVER move into a death zone or pending death zone!
     """
+    map_knowledge = get_map_knowledge()
     candidates = []
 
     # Build set of regions with visible items for attraction
@@ -797,11 +817,11 @@ def _choose_move_target(connections, danger_ids: set,
                 score += 3
 
             # MAP KNOWLEDGE: prefer center regions learned from Map
-            if _map_knowledge.get("revealed") and rid in _map_knowledge.get("safe_center", []):
+            if map_knowledge.get("revealed") and rid in map_knowledge.get("safe_center", []):
                 score += 5  # Strong pull toward center
 
             # MAP KNOWLEDGE: avoid known death zones
-            if rid in _map_knowledge.get("death_zones", set()):
+            if rid in map_knowledge.get("death_zones", set()):
                 continue  # HARD BLOCK
 
             candidates.append((rid, score))

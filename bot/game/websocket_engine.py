@@ -14,9 +14,8 @@ import json
 import asyncio
 import websockets
 from bot.config import WS_URL, SKILL_VERSION
-from bot.credentials import get_api_key
 from bot.game.action_sender import ActionSender, COOLDOWN_ACTIONS, FREE_ACTIONS
-from bot.strategy.brain import decide_action, reset_game_state, learn_from_map
+from bot.strategy.brain import decide_action, reset_game_state, learn_from_map, get_map_knowledge
 from bot.dashboard.state import dashboard_state
 from bot.utils.rate_limiter import ws_limiter
 from bot.utils.logger import get_logger
@@ -29,42 +28,43 @@ def _update_dz_knowledge(view: dict):
     Updates brain._map_knowledge with any new DZ regions observed.
     v1.5.2: pendingDeathzones entries are {id, name} objects.
     """
-    from bot.strategy.brain import _map_knowledge
+    map_knowledge = get_map_knowledge()
     # Track DZ from visible regions
     for region in view.get("visibleRegions", []):
         if isinstance(region, dict) and region.get("isDeathZone"):
             rid = region.get("id", "")
             if rid:
-                _map_knowledge["death_zones"].add(rid)
+                map_knowledge["death_zones"].add(rid)
     # Track from connected regions (type-safe: may be string IDs or objects)
     for conn in view.get("connectedRegions", []):
         if isinstance(conn, dict) and conn.get("isDeathZone"):
             rid = conn.get("id", "")
             if rid:
-                _map_knowledge["death_zones"].add(rid)
+                map_knowledge["death_zones"].add(rid)
         # Bare string IDs — we don't know if it's DZ, skip
     # Track current region
     cur = view.get("currentRegion", {})
     if isinstance(cur, dict) and cur.get("isDeathZone"):
         rid = cur.get("id", "")
         if rid:
-            _map_knowledge["death_zones"].add(rid)
+            map_knowledge["death_zones"].add(rid)
     # Track pending DZ — v1.5.2: entries are {id, name} objects
     for dz in view.get("pendingDeathzones", []):
         if isinstance(dz, dict):
             rid = dz.get("id", "")
             if rid:
-                _map_knowledge["death_zones"].add(rid)
+                map_knowledge["death_zones"].add(rid)
         elif isinstance(dz, str):
-            _map_knowledge["death_zones"].add(dz)  # Legacy fallback
+            map_knowledge["death_zones"].add(dz)  # Legacy fallback
 
 
 class WebSocketEngine:
     """Manages the gameplay WebSocket session."""
 
-    def __init__(self, game_id: str, agent_id: str):
+    def __init__(self, game_id: str, agent_id: str, api_key: str):
         self.game_id = game_id
         self.agent_id = agent_id
+        self.api_key = api_key
         self.action_sender = ActionSender()
         self.ws = None
         self.game_result = None
@@ -81,9 +81,8 @@ class WebSocketEngine:
         Main gameplay loop. Returns game result dict.
         Per gotchas.md: connect with X-API-Key only, no gameId/agentId params.
         """
-        api_key = get_api_key()
         headers = {
-            "X-API-Key": api_key,
+            "X-API-Key": self.api_key,
             "X-Version": SKILL_VERSION,
         }
 

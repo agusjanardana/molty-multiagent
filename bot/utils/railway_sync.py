@@ -1,16 +1,12 @@
 """
 Railway Variables auto-sync.
-After account creation, saves API_KEY + private keys back to Railway Variables
-so credentials survive container restarts.
-
-Uses variableCollectionUpsert to set ALL variables in ONE API call = ONE redeploy.
-Only syncs ONCE (checks SETUP_COMPLETE flag to prevent infinite redeploy loop).
-
-Requires: RAILWAY_API_TOKEN (create at https://railway.com/account/tokens)
-Railway auto-provides: RAILWAY_PROJECT_ID, RAILWAY_ENVIRONMENT_ID, RAILWAY_SERVICE_ID
+Supports both legacy single-agent credentials and multi-agent ACCOUNTS_JSON persistence.
 """
+import json
 import os
+
 import httpx
+
 from bot.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -19,31 +15,22 @@ RAILWAY_API_URL = "https://backboard.railway.com/graphql/v2"
 
 
 def is_railway() -> bool:
-    """Check if running on Railway."""
     return bool(os.getenv("RAILWAY_PROJECT_ID"))
 
 
 def is_setup_complete() -> bool:
-    """Check if first-run sync was already done (prevents redeploy loop)."""
     return os.getenv("SETUP_COMPLETE", "").lower() == "true"
 
 
 def _get_railway_config() -> dict | None:
-    """Get Railway config from env vars. Returns None if not on Railway or missing token."""
     token = os.getenv("RAILWAY_API_TOKEN", "")
     project_id = os.getenv("RAILWAY_PROJECT_ID", "")
     env_id = os.getenv("RAILWAY_ENVIRONMENT_ID", "")
     service_id = os.getenv("RAILWAY_SERVICE_ID", "")
-
     if not all([token, project_id, env_id, service_id]):
         if is_railway() and not token:
-            log.warning(
-                "⚠️ RAILWAY_API_TOKEN not set. Cannot auto-save credentials. "
-                "Create one at: https://railway.com/account/tokens → "
-                "then add RAILWAY_API_TOKEN to Railway Variables."
-            )
+            log.warning("RAILWAY_API_TOKEN not set. Cannot auto-save credentials.")
         return None
-
     return {
         "token": token,
         "project_id": project_id,
@@ -53,24 +40,16 @@ def _get_railway_config() -> dict | None:
 
 
 async def _collection_upsert(variables_dict: dict) -> bool:
-    """
-    Save ALL variables in ONE API call using variableCollectionUpsert.
-    This triggers only ONE redeploy (not one per variable).
-    """
     config = _get_railway_config()
     if not config:
         return False
 
-    # variableCollectionUpsert sets all variables in a single mutation
     mutation = """
     mutation variableCollectionUpsert($input: VariableCollectionUpsertInput!) {
         variableCollectionUpsert(input: $input)
     }
     """
-
-    # Filter out empty values
     clean_vars = {k: v for k, v in variables_dict.items() if v}
-
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
@@ -98,41 +77,27 @@ async def _collection_upsert(variables_dict: dict) -> bool:
                 return False
             log.info("Railway sync: %d variables saved in 1 API call", len(clean_vars))
             return True
-    except Exception as e:
-        log.warning("Railway collection upsert error: %s", e)
+    except Exception as exc:
+        log.warning("Railway collection upsert error: %s", exc)
         return False
 
 
 async def sync_all_to_railway(creds: dict, agent_pk: str, owner_pk: str = ""):
-    """
-    ONE-TIME sync of ALL variables to Railway after first-run.
-    Combines config + credentials + private keys into a SINGLE API call.
-    Uses variableCollectionUpsert = only 1 redeploy for all variables.
-    Sets SETUP_COMPLETE=true in the same call to prevent redeploy loop.
-    """
-    if not is_railway():
+    if not is_railway() or is_setup_complete():
         return
-
-    # Skip if already synced (prevents infinite redeploy loop)
-    if is_setup_complete():
-        log.info("Railway sync already done (SETUP_COMPLETE=true). Skipping.")
-        return
-
-    config = _get_railway_config()
-    if not config:
-        return
-
-    log.info("First-time Railway sync — saving ALL variables in one API call...")
 
     from bot.config import (
-        ROOM_MODE, ADVANCED_MODE, AUTO_WHITELIST,
-        AUTO_SC_WALLET, ENABLE_MEMORY, ENABLE_AGENT_TOKEN,
-        AUTO_IDENTITY, LOG_LEVEL,
+        AUTO_IDENTITY,
+        AUTO_SC_WALLET,
+        AUTO_WHITELIST,
+        ADVANCED_MODE,
+        ENABLE_AGENT_TOKEN,
+        ENABLE_MEMORY,
+        LOG_LEVEL,
+        ROOM_MODE,
     )
 
-    # Build complete variables map — ALL in one call = ONE redeploy
     all_vars = {
-        # Config
         "ROOM_MODE": ROOM_MODE,
         "ADVANCED_MODE": str(ADVANCED_MODE).lower(),
         "AUTO_WHITELIST": str(AUTO_WHITELIST).lower(),
@@ -141,20 +106,32 @@ async def sync_all_to_railway(creds: dict, agent_pk: str, owner_pk: str = ""):
         "ENABLE_AGENT_TOKEN": str(ENABLE_AGENT_TOKEN).lower(),
         "AUTO_IDENTITY": str(AUTO_IDENTITY).lower(),
         "LOG_LEVEL": LOG_LEVEL,
-        # Credentials
         "API_KEY": creds.get("api_key", ""),
         "AGENT_NAME": creds.get("agent_name", ""),
         "AGENT_WALLET_ADDRESS": creds.get("agent_wallet_address", ""),
         "OWNER_EOA": creds.get("owner_eoa", ""),
-        # Private keys
         "AGENT_PRIVATE_KEY": agent_pk,
         "OWNER_PRIVATE_KEY": owner_pk,
-        # Flag to prevent redeploy loop
         "SETUP_COMPLETE": "true",
     }
-
     ok = await _collection_upsert(all_vars)
     if ok:
-        log.info("✅ All variables synced to Railway (1 API call = 1 redeploy). Credentials saved!")
+        log.info("Legacy single-agent credentials synced to Railway")
     else:
-        log.warning("Railway collection upsert failed — check RAILWAY_API_TOKEN permissions")
+        log.warning("Railway sync failed for single-agent credentials")
+
+
+async def sync_profiles_to_railway(profiles: list[dict]):
+    if not is_railway():
+        return
+
+    all_vars = {
+        "ACCOUNTS_JSON": json.dumps({"accounts": profiles}, separators=(",", ":")),
+        "AGENT_BOOTSTRAP_COUNT": str(len(profiles)),
+        "SETUP_COMPLETE": "true",
+    }
+    ok = await _collection_upsert(all_vars)
+    if ok:
+        log.info("Saved %d agent profile(s) into Railway ACCOUNTS_JSON", len(profiles))
+    else:
+        log.warning("Failed to persist ACCOUNTS_JSON to Railway")

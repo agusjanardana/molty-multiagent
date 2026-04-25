@@ -5,14 +5,13 @@ Per paid-games.md: check balance → find room → sign → submit → poll curr
 import asyncio
 from bot.api_client import MoltyAPI, APIError
 from bot.web3.eip712_signer import sign_join_paid
-from bot.credentials import get_agent_private_key
 from bot.config import PAID_ENTRY_FEE_SMOLTZ
 from bot.utils.logger import get_logger
 
 log = get_logger(__name__)
 
 
-async def join_paid_game(api: MoltyAPI) -> tuple[str, str]:
+async def join_paid_game(api: MoltyAPI, agent_private_key: str) -> tuple[str, str]:
     """
     Join a paid room via EIP-712 signed flow.
     Returns (game_id, agent_id) when registered.
@@ -42,11 +41,10 @@ async def join_paid_game(api: MoltyAPI) -> tuple[str, str]:
     eip712_data = await api.get_join_paid_message(game_id)
 
     # Step 4: Sign with Agent EOA
-    agent_pk = get_agent_private_key()
-    if not agent_pk:
+    if not agent_private_key:
         raise RuntimeError("Agent private key not found")
 
-    signature = sign_join_paid(agent_pk, eip712_data)
+    signature = sign_join_paid(agent_private_key, eip712_data)
     deadline = eip712_data["message"]["deadline"]
 
     # Step 5: Submit (offchain by default)

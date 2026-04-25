@@ -85,13 +85,17 @@ class DashboardState:
 
     def get_snapshot(self) -> dict:
         """Full state snapshot for dashboard API."""
+        total_wins = sum(int(a.get("wins", 0) or 0) for a in self.agents.values())
+        total_moltz = sum(int(a.get("moltz", 0) or 0) for a in self.agents.values())
+        total_smoltz = sum(int(a.get("smoltz", 0) or 0) for a in self.agents.values())
+        total_cross = sum(float(a.get("cross", 0) or 0) for a in self.agents.values())
         return {
             "agents": dict(self.agents),
             "stats": {
-                "total_wins": self.total_wins,
-                "total_moltz": self.total_moltz,
-                "total_smoltz": self.total_smoltz,
-                "total_cross": self.total_cross,
+                "total_wins": total_wins,
+                "total_moltz": total_moltz,
+                "total_smoltz": total_smoltz,
+                "total_cross": total_cross,
                 "bots_running": self.bots_running,
                 "agents_active": sum(1 for a in self.agents.values()
                                      if a.get("status") == "playing"),

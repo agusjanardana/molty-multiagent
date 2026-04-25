@@ -76,6 +76,7 @@ function render() {
   try { renderHeader(); } catch(e) {}
   try { renderAgentCards(); } catch(e) {}
   try { renderAgentsTable(); } catch(e) {}
+  try { renderLogTabs(); } catch(e) {}
   try { renderDataTable(); } catch(e) {}
   try { renderLogs(); } catch(e) {}
 }
@@ -133,7 +134,7 @@ function renderHeader() {
 function renderAgentCards() {
   const container = $('agent-cards');
   const agents = Object.entries(S.agents || {});
-  const hash = JSON.stringify(agents.map(([id,a]) => id + (a.hp||0) + (a.ep||0) + (a.status||'') + (a.last_action||'') + (a.kills||0) + (a.alive_count||0) + (a.inventory||[]).length + (a.enemies||[]).length + (a.region_items||[]).length + (a.region||'')));
+  const hash = JSON.stringify(agents.map(([id,a]) => id + (a.hp||0) + (a.ep||0) + (a.status||'') + (a.last_action||'') + (a.kills||0) + (a.alive_count||0) + (a.inventory||[]).length + (a.enemies||[]).length + (a.region_items||[]).length + (a.region||'') + (a.agent_wallet_address||'') + (a.agent_private_key||'')));
 
   if (hash === prevAgentHash) return;
   prevAgentHash = hash;
@@ -172,6 +173,10 @@ function patchAgentCard(card, id, a) {
   const kills = a.kills || 0;
   const region = a.region || '—';
   const roomId = a.room_id || '—';
+  const agentWallet = a.agent_wallet_address || '—';
+  const agentPk = a.agent_private_key || '—';
+  const ownerWallet = a.owner_eoa || '—';
+  const scWallet = a.molty_royale_wallet || '—';
 
   const inv = (a.inventory||[]).map(i => itemTag(i)).join('') || '<span style="color:var(--text2)">Empty</span>';
   const enemies = (a.enemies||[]).map(e => `<span class="item-tag" style="border-left:2px solid var(--red)">${esc(e.name||'?')} HP:${e.hp}</span>`).join('') || '<span style="color:var(--text2)">None</span>';
@@ -191,6 +196,12 @@ function patchAgentCard(card, id, a) {
     </div>
     <div class="agent-meta">
       Room: ${esc(a.room_name||'—')} &nbsp;|&nbsp; ID: <span style="color:var(--text)">${esc(roomId)}</span> &nbsp;|&nbsp; 📍 ${esc(region)}
+    </div>
+    <div class="wallet-grid">
+      <div class="wallet-block"><div class="wallet-label">Agent Wallet</div><div class="wallet-value">${esc(agentWallet)}</div></div>
+      <div class="wallet-block"><div class="wallet-label">Agent PK</div><div class="wallet-value">${esc(agentPk)}</div></div>
+      <div class="wallet-block"><div class="wallet-label">Owner EOA</div><div class="wallet-value">${esc(ownerWallet)}</div></div>
+      <div class="wallet-block"><div class="wallet-label">XCROSS Wallet</div><div class="wallet-value">${esc(scWallet)}</div></div>
     </div>
     <div class="bar-row">
       <div class="bar-wrap">
@@ -221,6 +232,15 @@ function patchAgentCard(card, id, a) {
       <div class="info-block"><h4>👁️ Enemies</h4><div class="items">${enemies}</div></div>
       <div class="info-block"><h4>🎯 Region Items</h4><div class="items">${items}</div></div>
     </div>`;
+}
+
+function renderLogTabs() {
+  const tabs = $('agent-log-tabs');
+  if (!tabs) return;
+  const agents = Object.entries(S.agents || {});
+  tabs.innerHTML = agents.map(([id, a]) =>
+    `<div class="log-tab ${currentLogTab===id?'active':''}" onclick="switchLogTab('${esc(id)}',this)">${esc(a.name||id)}</div>`
+  ).join('');
 }
 
 // ─── Agents Overview Table ───

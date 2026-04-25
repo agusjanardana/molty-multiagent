@@ -53,6 +53,9 @@ MEMORY_FILE = MEMORY_DIR / "molty-royale-context.json"
 
 # ── Environment variables ─────────────────────────────────────────────
 AGENT_NAME = os.getenv("AGENT_NAME", "")
+AGENT_NAME_PREFIX = os.getenv("AGENT_NAME_PREFIX", AGENT_NAME or "MoltyAgent")
+AGENT_BOOTSTRAP_COUNT = int(os.getenv("AGENT_BOOTSTRAP_COUNT", "0") or "0")
+SHARED_OWNER_WALLET = os.getenv("SHARED_OWNER_WALLET", "true").lower() == "true"
 ADVANCED_MODE = os.getenv("ADVANCED_MODE", "true").lower() == "true"
 ROOM_MODE = os.getenv("ROOM_MODE", "free")  # free | auto | paid
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -61,6 +64,8 @@ AGENT_PRIVATE_KEY = os.getenv("AGENT_PRIVATE_KEY", "")
 AGENT_WALLET_ADDRESS = os.getenv("AGENT_WALLET_ADDRESS", "")
 OWNER_EOA = os.getenv("OWNER_EOA", "")
 OWNER_PRIVATE_KEY = os.getenv("OWNER_PRIVATE_KEY", "")
+ACCOUNTS_JSON = os.getenv("ACCOUNTS_JSON", "")
+DASHBOARD_SHOW_PRIVATE_KEYS = os.getenv("DASHBOARD_SHOW_PRIVATE_KEYS", "false").lower() == "true"
 
 # ── First-Run Intake answers (setup.md lines 29-39) ──────────────────
 # These replace the interactive yes/no prompts for Railway/Docker.

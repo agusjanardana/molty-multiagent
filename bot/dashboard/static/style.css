@@ -41,6 +41,10 @@ a{color:var(--cyan);text-decoration:none}
 .status-dot.error{background:var(--red);animation:pulse 1.5s infinite}
 .agent-name{font-size:18px;font-weight:700;margin-bottom:2px}
 .agent-meta{color:var(--text2);font-size:11px;margin-bottom:10px;line-height:1.6}
+.wallet-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.wallet-block{background:var(--surface2);border-radius:8px;padding:8px 10px;min-width:0}
+.wallet-label{font-size:10px;color:var(--text2);text-transform:uppercase;margin-bottom:4px}
+.wallet-value{font-size:10px;color:var(--cyan);word-break:break-all}
 .agent-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
 .agent-stat{text-align:center;padding:8px;background:var(--surface2);border-radius:8px}
 .agent-stat .v{font-size:15px;font-weight:700;color:var(--cyan)}
@@ -142,4 +146,4 @@ a{color:var(--cyan);text-decoration:none}
 ::-webkit-scrollbar-thumb:hover{background:var(--text2)}
 
 @media(max-width:1100px){.agent-grid{grid-template-columns:1fr}.info-grid{grid-template-columns:1fr 1fr}.combat-row{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:768px){.sidebar{width:60px;overflow:hidden}.sidebar .nav-text,.sidebar .logo span{display:none}.sidebar .logo h2{font-size:12px}.main{margin-left:60px}.header{padding:12px 16px}.content{padding:16px}.form-row{grid-template-columns:1fr}.agent-stats{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:768px){.sidebar{width:60px;overflow:hidden}.sidebar .nav-text,.sidebar .logo span{display:none}.sidebar .logo h2{font-size:12px}.main{margin-left:60px}.header{padding:12px 16px}.content{padding:16px}.form-row{grid-template-columns:1fr}.wallet-grid{grid-template-columns:1fr}.agent-stats{grid-template-columns:repeat(2,1fr)}}
