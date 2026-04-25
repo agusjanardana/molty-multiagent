@@ -51,6 +51,7 @@ class DashboardState:
             "total": 0,
             "error": "",
         }
+        self.owner_setup: dict[str, dict] = {}
 
         # ── Timestamps ─────────────────────────────────────────
         self.started_at = time.time()
@@ -99,6 +100,22 @@ class DashboardState:
         })
         self.last_update = time.time()
 
+    def set_owner_setup(self, owner_eoa: str, data: dict):
+        key = (owner_eoa or "").lower()
+        if not key:
+            return
+        current = self.owner_setup.get(key, {})
+        current.update(data)
+        current["updated_at"] = time.time()
+        self.owner_setup[key] = current
+        self.last_update = time.time()
+
+    def clear_owner_setup(self, owner_eoa: str):
+        key = (owner_eoa or "").lower()
+        if key in self.owner_setup:
+            del self.owner_setup[key]
+            self.last_update = time.time()
+
     # ── Dashboard reads ────────────────────────────────────────
 
     def get_snapshot(self) -> dict:
@@ -127,6 +144,7 @@ class DashboardState:
             },
             "accounts": self.accounts,
             "setup": dict(self.setup),
+            "owner_setup": dict(self.owner_setup),
             "logs": list(self.global_logs)[-200:],
             "agent_logs": {k: list(v)[-100:] for k, v in self.agent_logs.items()},
         }

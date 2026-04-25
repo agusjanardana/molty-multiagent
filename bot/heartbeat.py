@@ -33,6 +33,12 @@ def _get_owner_setup_lock(owner_eoa: str) -> asyncio.Lock:
     return lock
 
 
+def _owner_label(owner_eoa: str) -> str:
+    if not owner_eoa:
+        return "-"
+    return f"{owner_eoa[:8]}...{owner_eoa[-6:]}"
+
+
 class Heartbeat:
     """Main loop for a single configured agent profile."""
 
@@ -52,6 +58,12 @@ class Heartbeat:
 
     def _dashboard_private_key(self) -> str:
         return self.profile.get("agent_private_key", "")
+
+    def _set_owner_setup_state(self, owner_eoa: str, **fields):
+        dashboard_state.set_owner_setup(owner_eoa, fields)
+
+    def _clear_owner_setup_state(self, owner_eoa: str):
+        dashboard_state.clear_owner_setup(owner_eoa)
 
     @property
     def api_key(self) -> str:
@@ -166,19 +178,51 @@ class Heartbeat:
 
         owner_lock = _get_owner_setup_lock(owner_eoa)
         if owner_lock.locked():
+            shared = dashboard_state.owner_setup.get(owner_eoa.lower(), {})
+            holder_name = shared.get("holder_name", "another agent")
+            step = shared.get("step", "setup")
+            dashboard_state.add_log(
+                f"Waiting for shared-owner setup: holder={holder_name} step={step}",
+                "info",
+                self._agent_key,
+            )
             dashboard_state.update_agent(self._agent_key, {
                 "status": "idle",
-                "last_action": "Queued for shared-owner setup",
+                "last_action": f"Queued for shared-owner setup. Waiting for {holder_name} ({step})",
+                "shared_owner_waiting_for": holder_name,
+                "shared_owner_step": step,
             })
 
         wait_after = 0
         async with owner_lock:
+            dashboard_state.add_log(
+                f"Acquired shared-owner setup lock for owner {_owner_label(owner_eoa)}",
+                "info",
+                self._agent_key,
+            )
+            self._set_owner_setup_state(
+                owner_eoa,
+                owner=_owner_label(owner_eoa),
+                holder=self._agent_key,
+                holder_name=self._agent_name,
+                step="owner setup started",
+            )
             dashboard_state.update_agent(self._agent_key, {
                 "status": "idle",
                 "last_action": "Running owner setup",
+                "shared_owner_waiting_for": "",
+                "shared_owner_step": "owner setup started",
             })
 
             if self.profile.get("auto_sc_wallet", True):
+                self._set_owner_setup_state(
+                    owner_eoa,
+                    step="wallet setup",
+                )
+                dashboard_state.update_agent(self._agent_key, {
+                    "last_action": "Running owner setup: wallet setup",
+                    "shared_owner_step": "wallet setup",
+                })
                 wallet_addr = await ensure_molty_wallet(
                     self.api,
                     owner_eoa,
@@ -191,6 +235,14 @@ class Heartbeat:
                     self.profile["molty_royale_wallet"] = wallet_addr
 
             if wait_after == 0 and self.profile.get("auto_whitelist", True):
+                self._set_owner_setup_state(
+                    owner_eoa,
+                    step="whitelist request + approval",
+                )
+                dashboard_state.update_agent(self._agent_key, {
+                    "last_action": "Running owner setup: whitelist request + approval",
+                    "shared_owner_step": "whitelist request + approval",
+                })
                 ok = await ensure_whitelist(
                     self.api,
                     owner_eoa,
@@ -202,6 +254,14 @@ class Heartbeat:
                     wait_after = 120
 
             if wait_after == 0 and self.profile.get("auto_identity", True):
+                self._set_owner_setup_state(
+                    owner_eoa,
+                    step="identity registration",
+                )
+                dashboard_state.update_agent(self._agent_key, {
+                    "last_action": "Running owner setup: identity registration",
+                    "shared_owner_step": "identity registration",
+                })
                 ok = await ensure_identity(
                     self.api,
                     owner_private_key=self.owner_private_key,
@@ -211,6 +271,32 @@ class Heartbeat:
                 )
                 if not ok:
                     wait_after = 30
+
+            if wait_after:
+                self._set_owner_setup_state(
+                    owner_eoa,
+                    step=f"retry scheduled ({wait_after}s)",
+                )
+                dashboard_state.update_agent(self._agent_key, {
+                    "last_action": f"Owner setup incomplete. Retrying in {wait_after}s",
+                    "shared_owner_step": f"retry scheduled ({wait_after}s)",
+                })
+            else:
+                self._set_owner_setup_state(
+                    owner_eoa,
+                    step="owner setup completed",
+                )
+                dashboard_state.update_agent(self._agent_key, {
+                    "last_action": "Owner setup completed",
+                    "shared_owner_step": "owner setup completed",
+                })
+
+        dashboard_state.add_log(
+            f"Released shared-owner setup lock for owner {_owner_label(owner_eoa)}",
+            "info",
+            self._agent_key,
+        )
+        self._clear_owner_setup_state(owner_eoa)
 
         if wait_after:
             await asyncio.sleep(wait_after)
